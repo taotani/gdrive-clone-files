@@ -32,14 +32,15 @@ def share_file(service, file):
     return result
 
 def copy_spreadsheet(service, dirID, fileId):
-    print("copying files")
+    dir_name = service.files().get(fileId=dirID[0], fields="name").execute()
+    print(f"{dir_name['name']}:")
     #batch = service.new_batch_http_request(callback=callback)
     for g in ["c", "j"]:
         for n in range(1,NUM_COPIES+1):
             group_name = "{0}{1:03}".format(g, n)
             results = service.files().copy(fileId=fileId, body={"parents": [{"kind": "drive#fileLink", "id" : dirID}], "name": group_name}).execute()
             results = share_file(service, results)
-            print(f"{group_name}: {results['webViewLink']}")
+            print(f"  {group_name}: {results['webViewLink']}")
             service.files().update(fileId=fileId, body={"name": FINAL_FILE_NAME}).execute()
             
             
