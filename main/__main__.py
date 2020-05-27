@@ -4,19 +4,14 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+import csv
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/drive']
-NUM_COPIES=3
-INITIAL_FILE_NAME='tt000'
-FINAL_FILE_NAME='tt999'
-
-def callback(request_id, response, e):
-    if e:
-        # Handle error
-        print(e)
-    else:
-        return response
+NUM_COPIES=1
+INITIAL_FILE_NAME=000
+FINAL_FILE_NAME=999
+COURSES='courses.csv'
 
 def share_file(service, file):
     file_id = file['id']
@@ -31,24 +26,43 @@ def share_file(service, file):
     result = service.files().get(fileId=file_id, fields='webViewLink').execute()
     return result
 
-def copy_spreadsheet(service, dirID, fileId):
-    dir_name = service.files().get(fileId=dirID[0], fields="name").execute()
+def copy_spreadsheet(service, fromDirID, fileId, toDirID):
+    dir_name = service.files().get(fileId=toDirID, fields="name").execute()
     print(f"{dir_name['name']}:")
     #batch = service.new_batch_http_request(callback=callback)
     for g in ["c", "j"]:
         for n in range(1,NUM_COPIES+1):
             group_name = "{0}{1:03}".format(g, n)
-            results = service.files().copy(fileId=fileId, body={"parents": [{"kind": "drive#fileLink", "id" : dirID}], "name": group_name}).execute()
+            results = service.files().copy(fileId=fileId, body={"parents": [toDirID], "name": group_name}).execute()
             results = share_file(service, results)
             print(f"  {group_name}: {results['webViewLink']}")
             service.files().update(fileId=fileId, body={"name": FINAL_FILE_NAME}).execute()
-            
+
+def get_courses_list():
+    with open(COURSES) as f:
+        reader = csv.reader(f)
+        return sum([row for row in reader],[])
+
+
+def create_directories_for_course(service, parentDir, course):
+    metadata = {
+        'name': course,
+        'parents' : parentDir,
+        'mimeType': 'application/vnd.google-apps.folder'
+    }
+    dir = service.files().create(body=metadata,
+                                        fields='id').execute()
+    return dir.get('id')
             
 def clone_spreadsheets(service):
     results = service.files().list(q=f"name = '{INITIAL_FILE_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet'", fields="nextPageToken, files(id, name, parents)").execute()
+    courses = get_courses_list()
     originals = results.get('files', [])
     for item in originals:
-        copy_spreadsheet(service, item['parents'], item['id'])
+        parentDir = item['parents']
+        directories_for_courses = [create_directories_for_course(service, parentDir, course) for course in courses]
+        for course in directories_for_courses:
+            copy_spreadsheet(service, parentDir, item['id'], course)
 
 def main():
     """Shows basic usage of the Drive v3 API.
